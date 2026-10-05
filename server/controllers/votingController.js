@@ -5,7 +5,7 @@ const User = require("../models/User");
 const Vote = require("../models/Vote");
 const Authorization = require("../models/Authorization");
 
-const {signBlindedMessage, verifySignature} = require("../services/crypto/blindSignature");
+const { signBlindedMessage, verifySignature, getPublicJWK } = require("../services/crypto/blindSignature");
 
 const hashToken = (token) => {
     return crypto
@@ -29,7 +29,7 @@ const requestAuthorization = async (req, res) => {
     try {
         const { electionId, blindedMessage } = req.body;
 
-        if(!electionId || !blindedMessage) {
+        if (!electionId || !blindedMessage) {
             return res.status(400).json({
                 success: false,
                 message: "Election ID and blinded message are required"
@@ -37,7 +37,7 @@ const requestAuthorization = async (req, res) => {
         }
         const voter = await User.findById(req.user.id);
 
-        if(!voter || voter.role !== "voter" || !voter.isEligible) {
+        if (!voter || voter.role !== "voter" || !voter.isEligible) {
             return res.status(403).json({
                 success: false,
                 message: "Voter is not eligible"
@@ -45,7 +45,7 @@ const requestAuthorization = async (req, res) => {
         }
         const election = await Election.findById(electionId);
 
-        if(!election || !isElectionActive(election)) {
+        if (!election || !isElectionActive(election)) {
             return res.status(400).json({
                 success: false,
                 message: "Election is not currently active"
@@ -67,8 +67,8 @@ const requestAuthorization = async (req, res) => {
             blindedSignature
         });
 
-    } catch(error) {
-        if(error.code === 11000) {
+    } catch (error) {
+        if (error.code === 11000) {
             return res.status(409).json({
                 success: false,
                 message: "Authorization has already been issued"
@@ -86,9 +86,9 @@ const requestAuthorization = async (req, res) => {
 // Submit anonymous ballot
 const submitVote = async (req, res) => {
     try {
-        const {electionId, candidateId, token, signature} = req.body;
+        const { electionId, candidateId, token, signature } = req.body;
 
-        if(!electionId || !candidateId || !token || !signature) {
+        if (!electionId || !candidateId || !token || !signature) {
             return res.status(400).json({
                 success: false,
                 message: "All voting fields are required"
@@ -96,7 +96,7 @@ const submitVote = async (req, res) => {
         }
         const election = await Election.findById(electionId);
 
-        if(!election || !isElectionActive(election)) {
+        if (!election || !isElectionActive(election)) {
             return res.status(400).json({
                 success: false,
                 message: "Election is not active"
@@ -107,7 +107,7 @@ const submitVote = async (req, res) => {
             candidate => candidate._id.toString() === candidateId
         );
 
-        if(!candidateExists) {
+        if (!candidateExists) {
             return res.status(400).json({
                 success: false,
                 message: "Invalid candidate"
@@ -115,7 +115,7 @@ const submitVote = async (req, res) => {
         }
         const validSignature = verifySignature(token, signature);
 
-        if(!validSignature) {
+        if (!validSignature) {
             return res.status(401).json({
                 success: false,
                 message: "Invalid voting signature"
@@ -135,8 +135,8 @@ const submitVote = async (req, res) => {
             message: "Anonymous vote recorded successfully"
         });
 
-    } catch(error) {
-        if(error.code === 11000) {
+    } catch (error) {
+        if (error.code === 11000) {
             return res.status(409).json({
                 success: false,
                 message: "This voting token has already been used"
@@ -157,7 +157,7 @@ const getResults = async (req, res) => {
         const { electionId } = req.params;
         const election = await Election.findById(electionId);
 
-        if(!election) {
+        if (!election) {
             return res.status(404).json({
                 success: false,
                 message: "Election not found"
@@ -165,15 +165,15 @@ const getResults = async (req, res) => {
         }
 
         const results = await Vote.aggregate([{
-                $match: {
-                    electionId: election._id
-                }
-            }, {
-                $group: {
-                    _id: "$candidateId",
-                    votes: { $sum: 1 }
-                }
+            $match: {
+                electionId: election._id
             }
+        }, {
+            $group: {
+                _id: "$candidateId",
+                votes: { $sum: 1 }
+            }
+        }
         ]);
 
         const resultMap = new Map(
@@ -199,7 +199,7 @@ const getResults = async (req, res) => {
             candidates
         });
 
-    } catch(error) {
+    } catch (error) {
         console.error("Results error:", error.message);
 
         return res.status(500).json({
@@ -209,8 +209,27 @@ const getResults = async (req, res) => {
     }
 };
 
+// Expose ONLY the RSA public key (never the private key)
+// Returns a subset of the JWK containing only kty, n, e
+const getPublicKey = (req, res) => {
+    try {
+        const publicJWK = getPublicJWK();
+        return res.status(200).json({
+            success: true,
+            publicKey: publicJWK
+        });
+    } catch (error) {
+        console.error("Public key error:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Unable to retrieve public key"
+        });
+    }
+};
+
 module.exports = {
     requestAuthorization,
     submitVote,
-    getResults
+    getResults,
+    getPublicKey
 };

@@ -1,8 +1,8 @@
 const express = require("express");
 const router = express.Router();
 
-const {protect, adminOnly} = require("../middleware/authMiddleware");
-const {requestAuthorization, submitVote, getResults} = require("../controllers/votingController");
+const { protect } = require("../middleware/authMiddleware");
+const { requestAuthorization, submitVote, getResults, getPublicKey } = require("../controllers/votingController");
 
 router.post(
     "/authorize",
@@ -19,5 +19,8 @@ router.get(
     "/results/:electionId",
     getResults
 );
+
+// Public RSA key — only exposes kty/n/e, never private key material
+router.get("/public-key", getPublicKey);
 
 module.exports = router;
